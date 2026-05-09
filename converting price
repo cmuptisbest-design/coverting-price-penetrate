@@ -6,7 +6,7 @@ import time
 # ================= 設定區 =================
 TELEGRAM_TOKEN = '請填入你的_TELEGRAM_BOT_TOKEN'
 CHAT_ID = '請填入你的_CHAT_ID'
-CSV_FILE_PATH = '已發行CB資料.xlsx - 已發行CB資料.csv'  # 確認檔案路徑與名稱正確
+CSV_FILE_PATH = 'cb_data.csv'  # 確認檔案路徑與名稱正確
 # ==========================================
 
 def send_telegram_message(msg):
