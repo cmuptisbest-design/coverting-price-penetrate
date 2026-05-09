@@ -1,0 +1,117 @@
+import pandas as pd
+import requests
+import yfinance as yf
+import time
+
+# ================= 設定區 =================
+TELEGRAM_TOKEN = '請填入你的_TELEGRAM_BOT_TOKEN'
+CHAT_ID = '請填入你的_CHAT_ID'
+CSV_FILE_PATH = '已發行CB資料.xlsx - 已發行CB資料.csv'  # 確認檔案路徑與名稱正確
+# ==========================================
+
+def send_telegram_message(msg):
+    """發送 Telegram 訊息"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": msg,
+        "parse_mode": "HTML"
+    }
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"Telegram 發送失敗: {response.text}")
+    except Exception as e:
+        print(f"Telegram 發生錯誤: {e}")
+
+def get_stock_price(stock_code):
+    """取得台股即時/最新收盤價 (支援上市.TW 與上櫃.TWO)"""
+    # yfinance 台股需要加上 .TW (上市) 或 .TWO (上櫃)
+    # 我們先嘗試上市，若抓不到再嘗試上櫃
+    try:
+        stock = yf.Ticker(f"{stock_code}.TW")
+        price = stock.fast_info['lastPrice']
+        if pd.isna(price) or price == 0:
+            raise ValueError("上市無報價")
+        return price
+    except:
+        try:
+            stock = yf.Ticker(f"{stock_code}.TWO")
+            price = stock.fast_info['lastPrice']
+            return price
+        except:
+            return None
+
+def main():
+    print("讀取 CB 資料中...")
+    try:
+        # 讀取統一證券的 CSV 檔案
+        df = pd.read_csv(CSV_FILE_PATH)
+    except FileNotFoundError:
+        print(f"找不到檔案：{CSV_FILE_PATH}，請確認檔案是否在同一資料夾。")
+        return
+
+    # 檢查必要欄位是否存在
+    required_cols = ['標的債券', '轉換標的代碼', '轉換價格']
+    for col in required_cols:
+        if col not in df.columns:
+            print(f"CSV 格式錯誤，找不到欄位：{col}")
+            return
+
+    alert_messages = []
+    
+    print("開始比對即時股價與轉換價...")
+    # 為了避免一次撈取幾百檔被 Yahoo Finance 阻擋，我們逐一檢查或可自行優化為批次
+    for index, row in df.iterrows():
+        bond_name = row.get('標的債券', '未知標的')
+        stock_code = str(row['轉換標的代碼']).strip()
+        
+        # 處理轉換價資料 (確保是數字)
+        try:
+            conv_price = float(row['轉換價格'])
+        except (ValueError, TypeError):
+            continue  # 若轉換價為空值或非數字則跳過
+
+        # 確保代碼是數字 (過濾掉一些奇怪的資料)
+        if not stock_code.isdigit():
+            continue
+
+        # 取得目前股價
+        current_price = get_stock_price(stock_code)
+        
+        if current_price is None:
+            print(f"無法取得 {stock_code} 的股價資料，跳過。")
+            continue
+
+        # 【核心邏輯】：現股價格 > 可轉債轉換價
+        if current_price > conv_price:
+            # 計算溢出幅度
+            premium_pct = ((current_price - conv_price) / conv_price) * 100
+            
+            msg = f"🔔 <b>{bond_name} ({stock_code})</b> 突破轉換價！\n" \
+                  f"🎯 轉換價: <code>{conv_price}</code>\n" \
+                  f"📈 目前市價: <code>{current_price:.2f}</code>\n" \
+                  f"🔥 超出幅度: {premium_pct:.1f}%"
+            alert_messages.append(msg)
+            print(f"發現突破: {bond_name}")
+        
+        # 稍作暫停，避免 API 請求過於密集被鎖 IP
+        time.sleep(0.5)
+
+    # 彙整並發送 Telegram 通知
+    if alert_messages:
+        # Telegram 單則訊息有長度限制，若突破數量極多，建議分批發送
+        # 這裡示範合併成單一長訊息
+        final_msg = "<b>🚀 可轉債突破轉換價清單 🚀</b>\n\n" + "\n\n".join(alert_messages)
+        
+        # 若文字太長，截斷發送前 4000 字元
+        if len(final_msg) > 4000:
+            final_msg = final_msg[:4000] + "\n\n...(字數過多，僅顯示部分)"
+            
+        send_telegram_message(final_msg)
+        print("Telegram 通知發送完成！")
+    else:
+        print("目前無標的突破轉換價。")
+
+if __name__ == "__main__":
+    main()
