@@ -1,13 +1,19 @@
+import os
 import pandas as pd
 import requests
 import yfinance as yf
 import time
 
 # ================= 設定區 =================
-TELEGRAM_TOKEN = '請填入你的_TELEGRAM_BOT_TOKEN'
-CHAT_ID = '請填入你的_CHAT_ID'
-CSV_FILE_PATH = 'cb_data.csv'  # 確認檔案路徑與名稱正確
+# 改為從環境變數讀取，不要寫死在程式碼中！
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+CHAT_ID = os.environ.get('CHAT_ID')
+
+# 確保你的 CSV 檔也一起上傳到了 GitHub，並確認檔名一致
+CSV_FILE_PATH = 'cb_data.csv'  
 # ==========================================
+
+# ... (下方其他的函式 send_telegram_message, get_stock_price, main() 都保持不變) ...
 
 def send_telegram_message(msg):
     """發送 Telegram 訊息"""
